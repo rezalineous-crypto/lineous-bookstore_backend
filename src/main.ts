@@ -63,7 +63,7 @@ async function bootstrap() {
   };
   app.enableCors(corsOptions);
 
-  const port = process.env.PORT || 5000;
+  const port = process.env.PORT || 5005;
   await app.listen(port, '0.0.0.0');
   console.log(`Application is running on: http://localhost:${port}/api`);
 }
