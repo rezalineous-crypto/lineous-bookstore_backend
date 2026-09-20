@@ -10,7 +10,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookPartDto } from './dto/create-book-part.dto';
 import { UpdateBookPartDto } from './dto/update-book-part.dto';
-import { BookPart, Role, BookStatus } from '@prisma/client';
+import { BookPaper, Role, BookStatus } from '@prisma/client';
 
 @Injectable()
 export class BookPartService {
@@ -26,7 +26,7 @@ export class BookPartService {
   ): Promise<{
     message: string;
     status: string;
-    data: BookPart;
+    data: BookPaper;
   }> {
     if (requestingUserRole !== Role.ADMIN) {
       throw new ForbiddenException('Only administrators can create book parts');
@@ -41,13 +41,12 @@ export class BookPartService {
       throw new NotFoundException('Book not found');
     }
 
-    const bookPart = await this.prisma.bookPart.create({
+    const bookPart = await this.prisma.bookPaper.create({
       data: {
         bookId: dto.bookId,
-        title: dto.title,
-        partNumber: dto.partNumber,
-        description: dto.description,
-        price: dto.price,
+        name: dto.title,
+        sortOrder: dto.partNumber,
+        price: dto.price || 0,
       },
     });
 
@@ -68,16 +67,16 @@ export class BookPartService {
   ): Promise<{
     message: string;
     status: string;
-    data: BookPart[];
+    data: BookPaper[];
   }> {
     const where =
       requestingUserRole === Role.ADMIN
         ? { bookId }
         : { bookId, book: { deletedAt: null, status: BookStatus.PUBLISHED } };
 
-    const bookParts = await this.prisma.bookPart.findMany({
+    const bookParts = await this.prisma.bookPaper.findMany({
       where,
-      orderBy: { partNumber: 'asc' },
+      orderBy: { sortOrder: 'asc' },
     });
 
     return {
@@ -100,12 +99,12 @@ export class BookPartService {
   ): Promise<{
     message: string;
     status: string;
-    data: BookPart;
+    data: BookPaper;
   }> {
     const bookPart =
       requestingUserRole === Role.ADMIN
-        ? await this.prisma.bookPart.findUnique({ where: { id } })
-        : await this.prisma.bookPart.findFirst({
+        ? await this.prisma.bookPaper.findUnique({ where: { id } })
+        : await this.prisma.bookPaper.findFirst({
             where: {
               id,
               book: { deletedAt: null, status: BookStatus.PUBLISHED },
@@ -134,13 +133,13 @@ export class BookPartService {
   ): Promise<{
     message: string;
     status: string;
-    data: BookPart;
+    data: BookPaper;
   }> {
     if (requestingUserRole !== Role.ADMIN) {
       throw new ForbiddenException('Only administrators can update book parts');
     }
 
-    const existingBookPart = await this.prisma.bookPart.findUnique({
+    const existingBookPart = await this.prisma.bookPaper.findUnique({
       where: { id },
     });
 
@@ -148,12 +147,11 @@ export class BookPartService {
       throw new NotFoundException('Book part not found');
     }
 
-    const bookPart = await this.prisma.bookPart.update({
+    const bookPart = await this.prisma.bookPaper.update({
       where: { id },
       data: {
-        title: dto.title,
-        partNumber: dto.partNumber,
-        description: dto.description,
+        name: dto.title,
+        sortOrder: dto.partNumber,
         price: dto.price,
       },
     });
@@ -181,7 +179,7 @@ export class BookPartService {
       throw new ForbiddenException('Only administrators can delete book parts');
     }
 
-    const bookPart = await this.prisma.bookPart.findUnique({
+    const bookPart = await this.prisma.bookPaper.findUnique({
       where: { id, book: { deletedAt: null } },
     });
 
@@ -190,7 +188,7 @@ export class BookPartService {
     }
 
     // Soft delete
-    await this.prisma.bookPart.update({
+    await this.prisma.bookPaper.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
