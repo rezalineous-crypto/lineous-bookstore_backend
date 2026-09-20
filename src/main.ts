@@ -23,21 +23,12 @@ async function bootstrap() {
     console.log(
       `[DEBUG] ${req.method} ${req.url} Content-Type: ${contentType} Content-Length: ${contentLength}`,
     );
-    if (contentType.includes('multipart/form-data')) {
-      console.log(`[DEBUG] Skipping body parse for multipart request`);
-      // Don't parse multipart bodies - let multer handle it
-      return next();
-    }
     // Parse JSON and URL-encoded bodies
     bodyParser.json({ limit: '10mb' })(req, res, (err) => {
       if (err) {
         console.log(`[DEBUG] JSON parse error:`, err.message);
         return next(err);
       }
-      console.log(
-        `[DEBUG] Parsed JSON body keys:`,
-        Object.keys(req.body || {}),
-      );
       bodyParser.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
     });
   });
@@ -63,7 +54,7 @@ async function bootstrap() {
   };
   app.enableCors(corsOptions);
 
-  const port = process.env.PORT || 5005;
+  const port = process.env.PORT || 5000;
   await app.listen(port, '0.0.0.0');
   console.log(`Application is running on: http://localhost:${port}/api`);
 }

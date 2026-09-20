@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
@@ -11,7 +13,7 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
-  UploadedFiles,
+  Query,
 } from '@nestjs/common';
 import { BookService } from './book.service';
 import { CreateBookDto } from './dto/create-book.dto';
@@ -21,7 +23,7 @@ import { OptionalJwtAuthGuard } from 'src/auth/optional-auth.guard';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 import { Role } from '@prisma/client';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 /**
@@ -54,27 +56,24 @@ export class BookController {
   ) {}
 
   /**
-   * Create a new book with optional thumbnail and attachments
+   * Create a new book with optional thumbnail
    * Access: Admins only
+   * Note: Attachments are managed via separate endpoints (POST /book-attachments, DELETE /upload/book-attachment/:id)
    */
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  @UseInterceptors(
-    FileInterceptor('thumbnail'),
-    FilesInterceptor('attachments', 10),
-  )
+  @UseInterceptors(FileInterceptor('thumbnail'))
   async create(
     @Body() dto: CreateBookDto,
     @Request() req: AuthenticatedRequest,
     @UploadedFile() thumbnail?: Express.Multer.File,
-    @UploadedFiles() attachments?: Express.Multer.File[],
   ) {
     return this.bookService.create(
       dto,
       req.user.role,
       thumbnail,
-      attachments,
+      undefined,
       this.cloudinaryService,
     );
   }
@@ -85,8 +84,20 @@ export class BookController {
    */
   @Get()
   @UseGuards(OptionalJwtAuthGuard, RolesGuard)
-  findAll(@Request() req: RequestWithUser) {
-    return this.bookService.findAll(req?.user?.role);
+  findAll(
+    @Request() req: RequestWithUser,
+    @Query('subjectId') subjectId?: string,
+  ) {
+    return this.bookService.findAll(req?.user?.role, subjectId);
+  }
+
+  /**
+   * Get books in tree structure: publications > subjects > books
+   * Access: Public
+   */
+  @Get('tree')
+  getTree() {
+    return this.bookService.getTree();
   }
 
   /**

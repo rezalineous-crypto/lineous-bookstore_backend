@@ -46,15 +46,25 @@ export class BookService {
       throw new ConflictException('Book with this slug already exists');
     }
 
-    // Check if ISBN already exists
-    if (dto.isbn) {
-      const isbnExists = await this.prisma.book.findUnique({
-        where: { isbn: dto.isbn },
-      });
+    // Validate publication exists
+    const publication = await this.prisma.publication.findUnique({
+      where: { id: dto.publicationId },
+    });
+    if (!publication) {
+      throw new NotFoundException('Publication not found');
+    }
 
-      if (isbnExists) {
-        throw new ConflictException('Book with this ISBN already exists');
-      }
+    // Validate subject exists and belongs to the publication
+    const subject = await this.prisma.subject.findUnique({
+      where: { id: dto.subjectId },
+    });
+    if (!subject) {
+      throw new NotFoundException('Subject not found');
+    }
+    if (subject.publicationId && subject.publicationId !== dto.publicationId) {
+      throw new ConflictException(
+        'Subject does not belong to the selected publication',
+      );
     }
 
     // Handle thumbnail upload
@@ -70,23 +80,18 @@ export class BookService {
       thumbnailPublicId = result.publicId;
     }
 
-    // Create the book
+    // Create the book (without price/stock/isbn - those go to papers)
     const book = await this.prisma.book.create({
       data: {
         title: dto.title,
         slug: dto.slug,
         shortDescription: dto.shortDescription,
         description: dto.description,
-        isbn: dto.isbn,
-        price: dto.price,
-        discountPrice: dto.discountPrice,
         publicationDate: dto.publicationDate
           ? new Date(dto.publicationDate)
           : undefined,
         edition: dto.edition,
         language: dto.language,
-        stock: dto.stock ?? false,
-        stockAmount: dto.stockAmount,
         status: dto.status || BookStatus.DRAFT,
         thumbnail: thumbnailUrl || dto.thumbnail,
         publicationId: dto.publicationId,
@@ -141,15 +146,22 @@ export class BookService {
    * Get all books
    * Security: Public
    */
-  async findAll(requestingUserRole?: Role): Promise<{
+  async findAll(
+    requestingUserRole?: Role,
+    subjectId?: string,
+  ): Promise<{
     message: string;
     status: string;
     data: Book[];
   }> {
-    const where =
+    const where: any =
       requestingUserRole === Role.ADMIN
         ? {}
         : { deletedAt: null, status: BookStatus.PUBLISHED };
+
+    if (subjectId) {
+      where.subjectId = subjectId;
+    }
 
     const books = await this.prisma.book.findMany({
       where,
@@ -157,18 +169,26 @@ export class BookService {
       include: {
         publication: true,
         subject: true,
+        papers: {
+          where: { deletedAt: null },
+        },
         attachments: true,
         reviews: true,
       },
     });
 
+    const booksWithPriceRange = books.map((book) => ({
+      ...book,
+      priceRange: this.calculatePriceRange(book.papers),
+    }));
+
     return {
       message:
-        books.length > 0
+        booksWithPriceRange.length > 0
           ? BookSuccessMessages.RETRIEVED_ALL
           : BookSuccessMessages.NOT_FOUND,
       status: 'success',
-      data: books,
+      data: booksWithPriceRange,
     };
   }
 
@@ -182,7 +202,9 @@ export class BookService {
   ): Promise<{
     message: string;
     status: string;
-    data: Book;
+    data: Book & {
+      priceRange: { min: number; max: number; display: string } | null;
+    };
   }> {
     const where =
       requestingUserRole === Role.ADMIN
@@ -194,7 +216,7 @@ export class BookService {
       include: {
         publication: true,
         subject: true,
-        parts: true,
+        papers: true,
         attachments: true,
         reviews: true,
       },
@@ -204,10 +226,17 @@ export class BookService {
       throw new NotFoundException('Book not found');
     }
 
+    const bookWithPriceRange = {
+      ...book,
+      priceRange: this.calculatePriceRange(book.papers),
+    } as Book & {
+      priceRange: { min: number; max: number; display: string } | null;
+    };
+
     return {
       message: BookSuccessMessages.RETRIEVED,
       status: 'success',
-      data: book,
+      data: bookWithPriceRange,
     };
   }
 
@@ -227,29 +256,6 @@ export class BookService {
     status: string;
     data: Book;
   }> {
-    // console.log(`[DEBUG] Book update service - ID: ${id}`);
-    // console.log(`[DEBUG] DTO:`, JSON.stringify(dto, null, 2));
-    // console.log(
-    //   `[DEBUG] Thumbnail:`,
-    //   thumbnail
-    //     ? {
-    //         name: thumbnail.originalname,
-    //         size: thumbnail.size,
-    //         mimetype: thumbnail.mimetype,
-    //       }
-    //     : null,
-    // );
-    // console.log(
-    //   `[DEBUG] Attachments:`,
-    //   attachments
-    //     ? attachments.map((a) => ({
-    //         name: a.originalname,
-    //         size: a.size,
-    //         mimetype: a.mimetype,
-    //       }))
-    //     : [],
-    // );
-
     if (requestingUserRole !== Role.ADMIN) {
       throw new ForbiddenException('Only administrators can update books');
     }
@@ -270,17 +276,6 @@ export class BookService {
 
       if (slugExists) {
         throw new ConflictException('Slug already in use');
-      }
-    }
-
-    // If ISBN is being changed, check if it's already taken
-    if (dto.isbn && dto.isbn !== existingBook.isbn) {
-      const isbnExists = await this.prisma.book.findUnique({
-        where: { isbn: dto.isbn },
-      });
-
-      if (isbnExists) {
-        throw new ConflictException('ISBN already in use');
       }
     }
 
@@ -305,16 +300,10 @@ export class BookService {
     if (dto.shortDescription !== undefined)
       updateData.shortDescription = dto.shortDescription;
     if (dto.description !== undefined) updateData.description = dto.description;
-    if (dto.isbn !== undefined) updateData.isbn = dto.isbn;
-    if (dto.price !== undefined) updateData.price = dto.price;
-    if (dto.discountPrice !== undefined)
-      updateData.discountPrice = dto.discountPrice;
     if (dto.publicationDate !== undefined)
       updateData.publicationDate = new Date(dto.publicationDate);
     if (dto.edition !== undefined) updateData.edition = dto.edition;
     if (dto.language !== undefined) updateData.language = dto.language;
-    if (dto.stock !== undefined) updateData.stock = dto.stock;
-    if (dto.stockAmount !== undefined) updateData.stockAmount = dto.stockAmount;
     if (dto.status !== undefined) updateData.status = dto.status;
     // If new thumbnail uploaded, use it; otherwise use the provided URL
     if (thumbnailUrl) {
@@ -409,6 +398,155 @@ export class BookService {
       message: BookSuccessMessages.DELETED,
       status: 'success',
       data: null,
+    };
+  }
+
+  /**
+   * Get books in tree structure: publications > subjects > books
+   * Security: Public (returns only active, published books)
+   */
+  async getTree() {
+    // Get all active publications
+    const publications = await this.prisma.publication.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const result: {
+      publication: {
+        id: string;
+        name: string;
+        slug: string;
+        isActive: boolean;
+      };
+      subjects: {
+        subject: {
+          id: string;
+          name: string;
+          slug: string;
+          isActive: boolean;
+        };
+        books: {
+          id: string;
+          title: string;
+          slug: string;
+          priceRange: { min: number; max: number; display: string } | null;
+          thumbnail: string | null;
+        }[];
+      }[];
+    }[] = [];
+
+    for (const pub of publications) {
+      // Get all active subjects for this publication
+      const subjects = await this.prisma.subject.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          OR: [{ publicationId: pub.id }, { publicationId: null }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const subjectsWithBooks: {
+        subject: {
+          id: string;
+          name: string;
+          slug: string;
+          isActive: boolean;
+        };
+        books: {
+          id: string;
+          title: string;
+          slug: string;
+          priceRange: { min: number; max: number; display: string } | null;
+          thumbnail: string | null;
+        }[];
+      }[] = [];
+
+      for (const subject of subjects) {
+        // Get all published books for this subject and publication
+        const books = await this.prisma.book.findMany({
+          where: {
+            deletedAt: null,
+            status: BookStatus.PUBLISHED,
+            publicationId: pub.id,
+            subjectId: subject.id,
+          },
+          include: {
+            papers: {
+              where: { deletedAt: null },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (books.length > 0) {
+          const mappedBooks = books.map((book) => ({
+            id: book.id,
+            title: book.title,
+            slug: book.slug,
+            priceRange: this.calculatePriceRange(book.papers),
+            thumbnail: book.thumbnail,
+          }));
+          subjectsWithBooks.push({
+            subject: {
+              id: subject.id,
+              name: subject.name,
+              slug: subject.slug,
+              isActive: subject.isActive,
+            },
+            books: mappedBooks,
+          });
+        }
+      }
+
+      if (subjectsWithBooks.length > 0) {
+        result.push({
+          publication: {
+            id: pub.id,
+            name: pub.name,
+            slug: pub.slug,
+            isActive: pub.isActive,
+          },
+          subjects: subjectsWithBooks,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private calculatePriceRange(papers: any[]): {
+    min: number;
+    max: number;
+    display: string;
+  } | null {
+    if (!papers || papers.length === 0) return null;
+
+    const now = new Date();
+    const effectivePrices = papers.map((paper) => {
+      const basePrice = Number(paper.price);
+      if (
+        paper.discountPrice &&
+        paper.discountStartDate &&
+        paper.discountEndDate &&
+        now >= paper.discountStartDate &&
+        now <= paper.discountEndDate
+      ) {
+        return Number(paper.discountPrice);
+      }
+      return basePrice;
+    });
+
+    if (effectivePrices.length === 0) return null;
+
+    const min = Math.min(...effectivePrices);
+    const max = Math.max(...effectivePrices);
+
+    return {
+      min,
+      max,
+      display: min === max ? `৳${min}` : `From ৳${min}`,
     };
   }
 }

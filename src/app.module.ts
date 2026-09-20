@@ -7,7 +7,7 @@ import { UserModule } from './user/user.module';
 import { PublicationModule } from './publication/publication.module';
 import { SubjectModule } from './subject/subject.module';
 import { BookModule } from './book/book.module';
-import { BookPartModule } from './book-part/book-part.module';
+import { BookPaperModule } from './book-paper/book-paper.module';
 import { BookAttachmentModule } from './book-attachment/book-attachment.module';
 import { ReviewModule } from './review/review.module';
 import { TeacherModule } from './teacher/teacher.module';
@@ -16,11 +16,13 @@ import { CategoryModule } from './category/category.module';
 import { CartModule } from './cart/cart.module';
 import { WishlistModule } from './wishlist/wishlist.module';
 import { OrderModule } from './order/order.module';
+import { ReceiptModule } from './receipt/receipt.module';
 import { BannerModule } from './banner/banner.module';
 import { SettingModule } from './setting/setting.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -30,7 +32,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     PublicationModule,
     SubjectModule,
     BookModule,
-    BookPartModule,
+    BookPaperModule,
     BookAttachmentModule,
     ReviewModule,
     TeacherModule,
@@ -39,11 +41,13 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     CartModule,
     WishlistModule,
     OrderModule,
+    ReceiptModule,
     BannerModule,
     SettingModule,
     AuditLogModule,
     FileUploadModule,
     CloudinaryModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

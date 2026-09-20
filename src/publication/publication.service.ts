@@ -50,6 +50,7 @@ export class PublicationService {
         description: dto.description,
         logo: dto.logo,
         status: dto.status || BookStatus.PUBLISHED,
+        isActive: dto.isActive !== undefined ? dto.isActive : true,
       },
     });
 
@@ -69,7 +70,10 @@ export class PublicationService {
     status: string;
     data: Publication[];
   }> {
-    const where = requestingUserRole === Role.ADMIN ? {} : { deletedAt: null };
+    const where =
+      requestingUserRole === Role.ADMIN
+        ? {}
+        : { deletedAt: null, isActive: true };
 
     const publications = await this.prisma.publication.findMany({
       where,
@@ -162,6 +166,7 @@ export class PublicationService {
         description: dto.description,
         logo: dto.logo,
         status: dto.status,
+        isActive: dto.isActive,
       },
     });
 
@@ -173,7 +178,7 @@ export class PublicationService {
   }
 
   /**
-   * Delete a publication (soft delete)
+   * Delete a publication (soft delete with cascade)
    * Security: Admins only
    */
   async remove(
@@ -198,7 +203,35 @@ export class PublicationService {
       throw new NotFoundException('Publication not found');
     }
 
-    // Soft delete
+    // Get all subjects belonging to this publication
+    const subjects = await this.prisma.subject.findMany({
+      where: { publicationId: id, deletedAt: null },
+      select: { id: true },
+    });
+
+    const subjectIds = subjects.map((s) => s.id);
+
+    // Cascade soft delete: subjects
+    await this.prisma.subject.updateMany({
+      where: { publicationId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    // Cascade soft delete: books belonging to the deleted subjects
+    if (subjectIds.length > 0) {
+      await this.prisma.book.updateMany({
+        where: { subjectId: { in: subjectIds }, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    // Cascade soft delete: books directly belonging to this publication
+    await this.prisma.book.updateMany({
+      where: { publicationId: id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    // Soft delete the publication
     await this.prisma.publication.update({
       where: { id },
       data: { deletedAt: new Date() },
