@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReceiptBuilder } from './builder/receipt.builder';
@@ -186,6 +187,11 @@ export class ReceiptService {
     });
 
     if (!receipt) {
+      if (requestingUserRole !== 'ADMIN') {
+        throw new UnprocessableEntityException(
+          'Receipt has not been generated yet',
+        );
+      }
       throw new NotFoundException('Receipt not found');
     }
 
