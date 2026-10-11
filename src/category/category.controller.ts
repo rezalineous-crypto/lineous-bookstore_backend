@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
@@ -55,22 +56,26 @@ export class CategoryController {
   }
 
   /**
+   * Get the navigation menu for the customer navbar
+   * Access: Public (non-hidden categories) / Admin (all categories)
+   *
+   * NOTE: This MUST be declared before @Get(':id'). NestJS matches routes in
+   * declaration order, so a static segment declared after a parametrized one
+   * would be shadowed (GET /categories/menu would hit findOne with id="menu").
+   */
+  @Get('menu')
+  @UseGuards(OptionalJwtAuthGuard)
+  findMenu(@Request() req: RequestWithUser) {
+    return this.categoryService.findMenu(req?.user?.role);
+  }
+
+  /**
    * Get a single category by ID
    * Access: Public
    */
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.categoryService.findOne(id, req?.user?.role);
-  }
-
-  /**
-   * Get the navigation menu for the customer navbar
-   * Access: Public (non-hidden categories) / Admin (all categories)
-   */
-  @Get('menu')
-  @UseGuards(OptionalJwtAuthGuard)
-  findMenu(@Request() req: RequestWithUser) {
-    return this.categoryService.findMenu(req?.user?.role);
   }
 
   /**
