@@ -57,6 +57,10 @@ export class CategoryService {
         name: dto.name,
         slug: dto.slug,
         parentId: dto.parentId,
+        isHidden: dto.isHidden ?? false,
+        displayOrder: dto.displayOrder ?? 0,
+        icon: dto.icon,
+        route: dto.route,
       },
     });
 
@@ -176,6 +180,10 @@ export class CategoryService {
         name: dto.name,
         slug: dto.slug,
         parentId: dto.parentId,
+        isHidden: dto.isHidden,
+        displayOrder: dto.displayOrder,
+        icon: dto.icon,
+        route: dto.route,
       },
     });
 
@@ -183,6 +191,41 @@ export class CategoryService {
       message: 'Category updated successfully',
       status: 'success',
       data: category,
+    };
+  }
+
+  /**
+   * Get the navigation menu for the customer navbar
+   * Security: Public (non-hidden categories) / Admin (all categories)
+   */
+  async findMenu(requestingUserRole?: Role): Promise<{
+    message: string;
+    status: string;
+    data: Category[];
+  }> {
+    const where =
+      requestingUserRole === Role.ADMIN
+        ? { deletedAt: null }
+        : { deletedAt: null, isHidden: false };
+
+    const categories = await this.prisma.category.findMany({
+      where,
+      include: {
+        children: {
+          where: {
+            deletedAt: null,
+            ...(requestingUserRole !== Role.ADMIN ? { isHidden: false } : {}),
+          },
+          orderBy: { displayOrder: 'asc' },
+        },
+      },
+      orderBy: { displayOrder: 'asc' },
+    });
+
+    return {
+      message: 'Menu retrieved successfully',
+      status: 'success',
+      data: categories,
     };
   }
 

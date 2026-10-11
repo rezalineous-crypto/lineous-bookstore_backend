@@ -139,9 +139,10 @@ Admins should be able to toggle `isHidden` directly from the category list witho
 1. Admin creates "Topical Past Papers" as a top-level category
 2. Sets `displayOrder: 1`, `icon: "file-text"`, `route: "/topical-past-papers"`
 3. Leaves `isHidden: false`
-4. Creates child categories for each curriculum level (AS & A-Level, IGCSE, etc.)
-5. Creates subjects under each level
+4. Creates child categories for each curriculum tier (e.g. AS & A-Level, IGCSE, GCE O-Level)
+5. Creates subjects under each child category
 6. Creates books under each subject and assigns them to the "Topical Past Papers" category
+Note: there is no separate "Level" model — curriculum tiers are represented as child categories (Category.parentId), not a dedicated entity.
 
 ### 6.2 Hiding a Category
 
@@ -165,3 +166,119 @@ Admins should be able to toggle `isHidden` directly from the category list witho
 | Order Detail | Category context on order items |
 | Dashboard | New "Sales by Category" analytics widget |
 | Menu | Live preview + quick toggle |
+
+---
+
+## 8. API Reference: Endpoints and Request Bodies
+
+### Categories — `Controller('categories')`
+
+**Create category** — `POST /categories` · Admin only (`JwtAuthToken` + `RolesGuard` + `@Roles(ADMIN)`)
+```json
+{
+  "name": "Topical Past Papers",
+  "slug": "topical-past-papers",
+  "parentId": null,
+  "isHidden": false,
+  "displayOrder": 1,
+  "icon": "file-text",
+  "route": "/topical-past-papers"
+}
+```
+Required: `name`, `slug`. Optional: `parentId`, `isHidden` (default `false`), `displayOrder` (default `0`), `icon`, `route`. Returns `{ message, status, data: Category }`.
+
+**Update category** — `PATCH /categories/:id` · Admin only
+```json
+{
+  "isHidden": true,
+  "displayOrder": 5
+}
+```
+All fields optional (partial update).
+
+**List categories** — `GET /categories` · Public
+**Get one** — `GET /categories/:id` · Public
+**Delete** — `DELETE /categories/:id` · Admin only
+
+**Navigation menu** — `GET /categories/menu` · `OptionalJwtAuthToken` (public sees non-hidden; admin sees all)
+No request body. Returns category hierarchy ordered by `displayOrder` with nested `children`.
+
+### Books — `Controller('books')`
+
+**Create book** — `POST /books` · Admin only · `FileInterceptor('thumbnail')` (multipart, optional thumbnail field)
+```json
+{
+  "title": "...",
+  "slug": "...",
+  "publicationId": "pub-uuid",
+  "subjectId": "subj-uuid",
+  "categoryIds": ["cat-uuid-1", "cat-uuid-2"]
+}
+```
+Required: `title`, `slug`, `publicationId`, `subjectId`. Optional: `categoryIds: string[]` (writes `BookCategory` join rows).
+
+**Update book** — `PATCH /books/:id` · Admin only · same `FileInterceptor('thumbnail')`
+```json
+{ "categoryIds": ["cat-uuid-1"] }
+```
+`categoryIds` replaces all existing assignments.
+
+**List books** — `GET /books` · `OptionalJwtAuthToken` + `RolesGuard`
+Query params: `?subjectId=&categoryId=` (both optional). Admin sees all; public sees `PUBLISHED` only.
+
+**Book tree** — `GET /books/tree` · Public
+Query param: `?categoryId=` (optional). Returns `publication > subject > books` filtered by category.
+
+**Get one** — `GET /books/:id` · `OptionalJwtAuthToken` + `RolesGuard`
+**Delete** — `DELETE /books/:id` · Admin only
+
+### Cart — `Controller('cart')` (all `JwtAuthToken`, authenticated)
+
+**Add to cart** — `POST /cart`
+```json
+{ "bookId": "book-uuid", "paperId": "paper-uuid", "categoryId": "cat-uuid", "quantity": 2 }
+```
+Required: `bookId`, `quantity`. Optional: `paperId`, `categoryId` (the key new field — must be sent from the category page). Duplicate matching is `bookId + paperId + categoryId`, so adding the same book from two categories creates two line items.
+
+**Get cart** — `GET /cart`
+**Update quantity** — `PATCH /cart/items/:id` with body `{ "quantity": 3 }`
+**Remove item** — `DELETE /cart/items/:id`
+**Clear cart** — `DELETE /cart`
+
+### Orders — `Controller('orders')` (all `JwtAuthToken`)
+
+**Create order from cart** — `POST /orders`
+```json
+{ "address": { ... }, "paymentMethod": "CARD", "discount": 0, "shipping": 0 }
+```
+`OrderItem.categoryId` is copied automatically from each `CartItem.categoryId` at checkout — frontend sends nothing extra here.
+
+**Test order** — `POST /orders/test`
+```json
+{
+  "address": { "name": "...", "phone": "...", "addressLine1": "...", "city": "...", "region": "...", "postalCode": "..." },
+  "items": [
+    { "bookId": "book-uuid", "paperId": "paper-uuid", "categoryId": "cat-uuid", "quantity": 1 }
+  ]
+}
+```
+Each item's `categoryId` is stored on the `CartItem` and then copied to the `OrderItem`.
+
+**List orders** — `GET /orders` · Authenticated (own) or Admin
+Query param: `?categoryId=` (optional) — filters via `orderItems.some { categoryId }`.
+
+**Get one** — `GET /orders/:id`
+**Update status** — `PATCH /orders/:id/status` · Admin only · body `{ "status": "SHIPPED" }`
+**Update shipping** — `PATCH /orders/:id/shipping` · Admin only · body `{ "shipping": 250 }`
+
+### Admin Analytics — `Controller('admin')` (all `JwtAuthToken` + `RolesGuard` + `@Roles(ADMIN)`)
+
+- `GET /admin/dashboard` — overview
+- `GET /admin/analytics/sales?period=&startDate=&endDate=&groupBy=` — sales analytics
+- `GET /admin/books/top-selling?limit=&period=` — top books
+- `GET /admin/orders/status-stats` — order status counts
+- `GET /admin/sales/period?period=&date=` — sales for a period
+- `GET /admin/inventory/overview`
+- `GET /admin/analytics/customers?period=`
+
+**"Sales by Category" widget:** no dedicated new endpoint exists yet. Assemble it from `GET /admin/analytics/sales` joined with `GET /orders?categoryId=` (or a future `groupBy: CATEGORY` option on the sales endpoint). Revenue per category comes from `OrderItem.subtotal` grouped by `OrderItem.categoryId`.

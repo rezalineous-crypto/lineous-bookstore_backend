@@ -8,6 +8,7 @@ import {
   Body,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -58,8 +59,11 @@ export class OrderController {
    * Access: Authenticated users (own orders) or Admins
    */
   @Get()
-  findAll(@Request() req: RequestWithUser) {
-    return this.orderService.findAll(req.user.id, req.user.role);
+  findAll(
+    @Request() req: RequestWithUser,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    return this.orderService.findAll(req.user.id, req.user.role, categoryId);
   }
 
   /**

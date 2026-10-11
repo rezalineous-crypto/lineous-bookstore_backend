@@ -176,3 +176,91 @@ Users can filter by:
 | Order History | Filter by category |
 | Search | Category filter and context |
 | Responsive | New menu patterns for mobile/tablet |
+
+---
+
+## 9. API Reference: Endpoints and Request Bodies
+
+All base URL is the API root (e.g. `http://localhost:3000`). Authenticated endpoints require an `Authorization: Bearer <jwt>` header.
+
+### Navigation Menu
+
+**`GET /categories/menu`** · `OptionalJwtAuthToken` (no auth required, but JWT is attached if present)
+No request body. Returns only non-hidden categories ordered by `displayOrder`, with nested `children`. Admins see all categories (including hidden).
+```json
+{
+  "data": [
+    {
+      "id": "cat-uuid",
+      "name": "Topical Past Papers",
+      "slug": "topical-past-papers",
+      "isHidden": false,
+      "displayOrder": 1,
+      "icon": "file-text",
+      "route": "/topical-past-papers",
+      "parentId": null,
+      "children": [ { "id": "...", "name": "...", ... } ]
+    }
+  ]
+}
+```
+
+### Category-Based Book Browsing
+
+**`GET /books`** · `OptionalJwtAuthToken` + `RolesGuard`
+Query params (both optional):
+- `?subjectId=<uuid>` — filter by subject
+- `?categoryId=<uuid>` — filter by category (the new field)
+Public users see `PUBLISHED` books only; admins see all.
+```json
+{ "data": [ { "id": "...", "title": "...", "publication": {...}, "subject": {...}, "categories": [...], "papers": [...] } ] }
+```
+
+**`GET /books/tree`** · Public
+Query param: `?categoryId=<uuid>` (optional). Returns `publication > subject > books` filtered by category.
+```json
+{ "data": [ { "publication": {...}, "subjects": [ { "subject": {...}, "books": [...] } ] } ] }
+```
+
+**`GET /books/:id`** · `OptionalJwtAuthToken` + `RolesGuard`
+Returns the book with its `categories` array (for breadcrumb and "other categories" display).
+
+### Shopping Cart
+
+**`POST /cart`** · `JwtAuthToken` (authenticated)
+```json
+{ "bookId": "book-uuid", "paperId": "paper-uuid", "categoryId": "cat-uuid", "quantity": 2 }
+```
+Required: `bookId`, `quantity`. Optional: `paperId`, **`categoryId`**.
+`categoryId` is mandatory from the category page — without it the browsing context is lost. Duplicate matching is `bookId + paperId + categoryId`, so the same book added from two categories becomes two separate line items.
+
+**`GET /cart`** · `JwtAuthToken` — returns cart items including each item's `categoryId` (and the category's name via include).
+**`PATCH /cart/items/:id`** · body `{ "quantity": 3 }`
+**`DELETE /cart/items/:id`**
+**`DELETE /cart`** — clear cart
+
+### Order History
+
+**`GET /orders`** · `JwtAuthToken`
+Query param: `?categoryId=<uuid>` (optional) — filters orders by `orderItems.some { categoryId }`. Users see their own orders; admins see all.
+```json
+{ "data": [ { "id": "...", "orderItems": [ { "bookId": "...", "bookTitle": "...", "categoryId": "cat-uuid", "subtotal": ... } ] } ] }
+```
+
+**`GET /orders/:id`** · `JwtAuthToken` — returns the order with `orderItems`, each carrying its `categoryId` (the category captured at add-to-cart time, not derived from the book's current categories).
+
+**`POST /orders`** · `JwtAuthToken` — create order from cart. Body: `{ "address": {...}, "paymentMethod": "CARD", "discount": 0, "shipping": 0 }`. `OrderItem.categoryId` is copied automatically from each `CartItem.categoryId`; the frontend sends nothing extra.
+**`POST /orders/test`** · `JwtAuthToken` — test order. Body:
+```json
+{
+  "address": { "name": "...", "phone": "...", "addressLine1": "...", "city": "...", "region": "...", "postalCode": "..." },
+  "items": [ { "bookId": "book-uuid", "paperId": "paper-uuid", "categoryId": "cat-uuid", "quantity": 1 } ]
+}
+```
+Each item's `categoryId` flows `TestOrderItem.categoryId` → `CartItem.categoryId` → `OrderItem.categoryId`.
+**`PATCH /orders/:id/status`** · Admin only · `{ "status": "SHIPPED" }`
+**`PATCH /orders/:id/shipping`** · Admin only · `{ "shipping": 250 }`
+
+### Search
+
+Search endpoints (if any) should accept a `?categoryId=` filter. If the existing search endpoint does not yet support it, filter client-side against the `categories` array returned on each book.

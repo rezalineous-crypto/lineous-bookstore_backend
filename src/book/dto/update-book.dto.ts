@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsEnum,
   IsDateString,
+  IsArray,
 } from 'class-validator';
 import { BookStatus } from '@prisma/client';
 
@@ -50,4 +51,9 @@ export class UpdateBookDto {
   @IsOptional()
   @IsString()
   subjectId?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  categoryIds?: string[];
 }

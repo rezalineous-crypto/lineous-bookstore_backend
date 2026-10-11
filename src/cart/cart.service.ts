@@ -102,12 +102,13 @@ export class CartService {
       });
     }
 
-    // Check if item already exists in cart (match paper too)
+    // Check if item already exists in cart (match paper and category too)
     const existingItem = await this.prisma.cartItem.findFirst({
       where: {
         cartId: cart.id,
         bookId: dto.bookId,
         ...(dto.paperId && { paperId: dto.paperId }),
+        ...(dto.categoryId && { categoryId: dto.categoryId }),
       },
     });
 
@@ -124,6 +125,7 @@ export class CartService {
           cartId: cart.id,
           bookId: dto.bookId,
           paperId: dto.paperId,
+          categoryId: dto.categoryId,
           quantity: dto.quantity,
         },
       });

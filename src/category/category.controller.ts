@@ -14,6 +14,7 @@ import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from 'src/auth/optional-auth.guard';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 import { Role } from '@prisma/client';
@@ -60,6 +61,16 @@ export class CategoryController {
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
     return this.categoryService.findOne(id, req?.user?.role);
+  }
+
+  /**
+   * Get the navigation menu for the customer navbar
+   * Access: Public (non-hidden categories) / Admin (all categories)
+   */
+  @Get('menu')
+  @UseGuards(OptionalJwtAuthGuard)
+  findMenu(@Request() req: RequestWithUser) {
+    return this.categoryService.findMenu(req?.user?.role);
   }
 
   /**

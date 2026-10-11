@@ -135,6 +135,16 @@ export class BookService {
       });
     }
 
+    // Assign categories if provided
+    if (dto.categoryIds && dto.categoryIds.length > 0) {
+      await this.prisma.bookCategory.createMany({
+        data: dto.categoryIds.map((categoryId) => ({
+          bookId: book.id,
+          categoryId,
+        })),
+      });
+    }
+
     return {
       message: BookSuccessMessages.CREATED,
       status: 'success',
@@ -149,6 +159,7 @@ export class BookService {
   async findAll(
     requestingUserRole?: Role,
     subjectId?: string,
+    categoryId?: string,
   ): Promise<{
     message: string;
     status: string;
@@ -161,6 +172,10 @@ export class BookService {
 
     if (subjectId) {
       where.subjectId = subjectId;
+    }
+
+    if (categoryId) {
+      where.categories = { some: { categoryId } };
     }
 
     const books = await this.prisma.book.findMany({
@@ -357,6 +372,22 @@ export class BookService {
       });
     }
 
+    // Update category assignments if provided
+    if (dto.categoryIds !== undefined) {
+      await this.prisma.bookCategory.deleteMany({
+        where: { bookId: book.id },
+      });
+
+      if (dto.categoryIds.length > 0) {
+        await this.prisma.bookCategory.createMany({
+          data: dto.categoryIds.map((categoryId) => ({
+            bookId: book.id,
+            categoryId,
+          })),
+        });
+      }
+    }
+
     return {
       message: BookSuccessMessages.UPDATED,
       status: 'success',
@@ -405,7 +436,7 @@ export class BookService {
    * Get books in tree structure: publications > subjects > books
    * Security: Public (returns only active, published books)
    */
-  async getTree() {
+  async getTree(categoryId?: string) {
     // Get all active publications
     const publications = await this.prisma.publication.findMany({
       where: { deletedAt: null, isActive: true },
@@ -471,6 +502,7 @@ export class BookService {
             status: BookStatus.PUBLISHED,
             publicationId: pub.id,
             subjectId: subject.id,
+            ...(categoryId ? { categories: { some: { categoryId } } } : {}),
           },
           include: {
             papers: {

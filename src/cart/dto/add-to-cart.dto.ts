@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsNumber, Min, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsNumber,
+  Min,
+  IsOptional,
+} from 'class-validator';
 
 export class AddToCartDto {
   @IsString()
@@ -8,6 +14,10 @@ export class AddToCartDto {
   @IsOptional()
   @IsString()
   paperId?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
 
   @IsNumber()
   @Min(1)

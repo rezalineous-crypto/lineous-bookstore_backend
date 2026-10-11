@@ -20,6 +20,10 @@ class TestOrderItemDto {
   @IsString()
   paperId?: string;
 
+  @IsOptional()
+  @IsString()
+  categoryId?: string;
+
   @IsNumber()
   @Min(1)
   quantity!: number;

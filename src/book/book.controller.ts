@@ -87,8 +87,9 @@ export class BookController {
   findAll(
     @Request() req: RequestWithUser,
     @Query('subjectId') subjectId?: string,
+    @Query('categoryId') categoryId?: string,
   ) {
-    return this.bookService.findAll(req?.user?.role, subjectId);
+    return this.bookService.findAll(req?.user?.role, subjectId, categoryId);
   }
 
   /**
@@ -96,8 +97,8 @@ export class BookController {
    * Access: Public
    */
   @Get('tree')
-  getTree() {
-    return this.bookService.getTree();
+  getTree(@Query('categoryId') categoryId?: string) {
+    return this.bookService.getTree(categoryId);
   }
 
   /**

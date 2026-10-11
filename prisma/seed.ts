@@ -226,6 +226,99 @@ async function main() {
   }
   console.log('⚙️ Created settings');
 
+  // Create CLC Resource categories (navigation menu items)
+  const topicalPastPapers = await prisma.category.upsert({
+    where: { slug: 'topical-past-papers' },
+    update: {},
+    create: {
+      name: 'Topical Past Papers',
+      slug: 'topical-past-papers',
+      isHidden: false,
+      displayOrder: 1,
+      icon: 'file-text',
+      route: '/topical-past-papers',
+    },
+  });
+  console.log('🏷️ Created category: Topical Past Papers');
+
+  const yearWisePastPapers = await prisma.category.upsert({
+    where: { slug: 'year-wise-past-papers' },
+    update: {},
+    create: {
+      name: 'Year-wise Past Papers',
+      slug: 'year-wise-past-papers',
+      isHidden: false,
+      displayOrder: 2,
+      icon: 'calendar',
+      route: '/year-wise-past-papers',
+    },
+  });
+  console.log('🏷️ Created category: Year-wise Past Papers');
+
+  const mockPapers = await prisma.category.upsert({
+    where: { slug: 'mock-papers' },
+    update: {},
+    create: {
+      name: 'Mock Papers',
+      slug: 'mock-papers',
+      isHidden: false,
+      displayOrder: 3,
+      icon: 'file-check',
+      route: '/mock-papers',
+    },
+  });
+  console.log('🏷️ Created category: Mock Papers');
+
+  const textBooks = await prisma.category.upsert({
+    where: { slug: 'text-books' },
+    update: {},
+    create: {
+      name: 'Text Books',
+      slug: 'text-books',
+      isHidden: true,
+      displayOrder: 4,
+      icon: 'book',
+      route: '/text-books',
+    },
+  });
+  console.log('🏷️ Created category: Text Books (hidden)');
+
+  const notes = await prisma.category.upsert({
+    where: { slug: 'notes' },
+    update: {},
+    create: {
+      name: 'Notes',
+      slug: 'notes',
+      isHidden: true,
+      displayOrder: 5,
+      icon: 'sticky-note',
+      route: '/notes',
+    },
+  });
+  console.log('🏷️ Created category: Notes (hidden)');
+
+  // Assign existing books to categories (many-to-many via BookCategory)
+  const existingBooks = await prisma.book.findMany({
+    where: { deletedAt: null },
+    select: { id: true },
+  });
+
+  for (const existingBook of existingBooks) {
+    const existingAssignments = await prisma.bookCategory.findFirst({
+      where: { bookId: existingBook.id },
+    });
+
+    if (!existingAssignments) {
+      await prisma.bookCategory.create({
+        data: {
+          bookId: existingBook.id,
+          categoryId: textBooks.id,
+        },
+      });
+    }
+  }
+  console.log('🔗 Assigned existing books to Text Books category');
+
   console.log('✅ Database seeded successfully!');
 }
 

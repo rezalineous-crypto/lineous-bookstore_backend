@@ -149,6 +149,11 @@ export class OrderService {
         orderItem.paperName = item.paper?.name;
       }
 
+      // Preserve the category context captured at add-to-cart time
+      if (item.categoryId) {
+        orderItem.categoryId = item.categoryId;
+      }
+
       orderItemsData.push(orderItem);
     }
 
@@ -303,6 +308,7 @@ export class OrderService {
           cartId: cart.id,
           bookId: item.bookId,
           paperId: item.paperId,
+          categoryId: item.categoryId,
           quantity: item.quantity,
         },
       });
@@ -381,6 +387,11 @@ export class OrderService {
         orderItem.paperName = paperName;
       }
 
+      // Preserve the category context captured at add-to-cart time
+      if (item.categoryId) {
+        orderItem.categoryId = item.categoryId;
+      }
+
       orderItemsData.push(orderItem);
     }
 
@@ -438,12 +449,17 @@ export class OrderService {
   async findAll(
     userId: string,
     requestingUserRole: Role,
+    categoryId?: string,
   ): Promise<{
     message: string;
     status: string;
     data: Order[];
   }> {
-    const where = requestingUserRole === Role.ADMIN ? {} : { userId };
+    const where: any = requestingUserRole === Role.ADMIN ? {} : { userId };
+
+    if (categoryId) {
+      where.orderItems = { some: { categoryId } };
+    }
 
     const orders = await this.prisma.order.findMany({
       where,

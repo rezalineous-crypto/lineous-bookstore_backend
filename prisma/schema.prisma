@@ -196,19 +196,27 @@ model TeacherBook {
 }
 
 model Category {
-  id        String         @id @default(uuid())
-  name      String
-  slug      String         @unique
-  parentId  String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  deletedAt DateTime?
-  books     BookCategory[]
-  parent    Category?      @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children  Category[]     @relation("CategoryHierarchy")
+  id           String         @id @default(uuid())
+  name         String
+  slug         String         @unique
+  parentId     String?
+  isHidden     Boolean        @default(false)
+  displayOrder Int           @default(0)
+  icon         String?
+  route        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+  books        BookCategory[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
+  parent       Category?      @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children     Category[]     @relation("CategoryHierarchy")
 
   @@index([slug])
   @@index([parentId])
+  @@index([isHidden])
+  @@index([displayOrder])
 }
 
 model BookCategory {
@@ -281,18 +289,21 @@ model Cart {
 }
 
 model CartItem {
-  id       String     @id @default(uuid())
-  cartId   String
-  bookId   String
-  paperId  String?
-  quantity Int        @default(1)
-  book     Book       @relation(fields: [bookId], references: [id])
-  cart     Cart       @relation(fields: [cartId], references: [id])
-  paper    BookPaper? @relation(fields: [paperId], references: [id])
+  id         String     @id @default(uuid())
+  cartId     String
+  bookId     String
+  paperId    String?
+  quantity   Int        @default(1)
+  categoryId String?
+  book       Book       @relation(fields: [bookId], references: [id])
+  cart       Cart       @relation(fields: [cartId], references: [id])
+  paper      BookPaper? @relation(fields: [paperId], references: [id])
+  category   Category?  @relation(fields: [categoryId], references: [id])
 
   @@index([cartId])
   @@index([bookId])
   @@index([paperId])
+  @@index([categoryId])
 }
 
 model Wishlist {
@@ -346,13 +357,16 @@ model OrderItem {
   paperPrice Decimal  @db.Decimal(10, 2)
   quantity   Int
   subtotal   Decimal  @db.Decimal(10, 2)
+  categoryId String?
   book       Book     @relation(fields: [bookId], references: [id])
   order      Order    @relation(fields: [orderId], references: [id])
   paper      BookPaper? @relation(fields: [paperId], references: [id])
+  category   Category?  @relation(fields: [categoryId], references: [id])
 
   @@index([orderId])
   @@index([bookId])
   @@index([paperId])
+  @@index([categoryId])
 }
 
 model Payment {

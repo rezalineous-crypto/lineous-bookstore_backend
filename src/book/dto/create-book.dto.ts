@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsEnum,
   IsDateString,
+  IsArray,
 } from 'class-validator';
 import { BookStatus } from '@prisma/client';
 
@@ -53,4 +54,9 @@ export class CreateBookDto {
   @IsString()
   @IsNotEmpty()
   subjectId!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  categoryIds?: string[];
 }
