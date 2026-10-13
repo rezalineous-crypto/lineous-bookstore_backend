@@ -165,9 +165,11 @@ export class BookService {
     status: string;
     data: Book[];
   }> {
+    // Soft-deleted books are never returned, for any role. Admins see all
+    // non-deleted books (any status); everyone else sees published only.
     const where: any =
       requestingUserRole === Role.ADMIN
-        ? {}
+        ? { deletedAt: null }
         : { deletedAt: null, status: BookStatus.PUBLISHED };
 
     if (subjectId) {
@@ -221,10 +223,13 @@ export class BookService {
       priceRange: { min: number; max: number; display: string } | null;
     };
   }> {
-    const where =
-      requestingUserRole === Role.ADMIN
-        ? { id }
-        : { id, deletedAt: null, status: BookStatus.PUBLISHED };
+    const where = {
+      id,
+      deletedAt: null,
+      ...(requestingUserRole === Role.ADMIN
+        ? {}
+        : { status: BookStatus.PUBLISHED }),
+    };
 
     const book = await this.prisma.book.findUnique({
       where,
@@ -433,119 +438,238 @@ export class BookService {
   }
 
   /**
-   * Get books in tree structure: publications > subjects > books
+   * Get books in tree structure: categories > publications > subjects > books
    * Security: Public (returns only active, published books)
+   *
+   * A book is nested under every category it is assigned to (via BookCategory),
+   * so a book linked to multiple categories appears under each one.
+   * When `categoryId` is supplied, only that category is returned at the top
+   * level and books are nested solely under it.
+   * Books with no category assignment are not included in the tree.
    */
   async getTree(categoryId?: string) {
-    // Get all active publications
-    const publications = await this.prisma.publication.findMany({
-      where: { deletedAt: null, isActive: true },
+    // Fetch all published books once, with their categories, publication,
+    // subject and papers, then group in memory. This avoids the nested
+    // per-publication/per-subject queries of the previous implementation.
+    const books = await this.prisma.book.findMany({
+      where: {
+        deletedAt: null,
+        status: BookStatus.PUBLISHED,
+        ...(categoryId ? { categories: { some: { categoryId } } } : {}),
+      },
+      include: {
+        categories: {
+          include: {
+            category: true,
+          },
+        },
+        publication: true,
+        subject: true,
+        papers: { where: { deletedAt: null } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    const result: {
-      publication: {
-        id: string;
-        name: string;
-        slug: string;
-        isActive: boolean;
+    // category -> publication -> subject -> books
+    const categoryMap = new Map<
+      string,
+      {
+        category: {
+          id: string;
+          name: string;
+          slug: string;
+          isHidden: boolean;
+          displayOrder: number;
+          icon: string | null;
+          route: string | null;
+        };
+        publications: Map<
+          string,
+          {
+            publication: {
+              id: string;
+              name: string;
+              slug: string;
+              isActive: boolean;
+            };
+            subjects: Map<
+              string,
+              {
+                subject: {
+                  id: string;
+                  name: string;
+                  slug: string;
+                  isActive: boolean;
+                };
+                books: {
+                  id: string;
+                  title: string;
+                  slug: string;
+                  priceRange: {
+                    min: number;
+                    max: number;
+                    display: string;
+                  } | null;
+                  thumbnail: string | null;
+                }[];
+              }
+            >;
+          }
+        >;
+      }
+    >();
+
+    for (const book of books) {
+      const bookEntry = {
+        id: book.id,
+        title: book.title,
+        slug: book.slug,
+        priceRange: this.calculatePriceRange(book.papers),
+        thumbnail: book.thumbnail,
       };
-      subjects: {
-        subject: {
-          id: string;
-          name: string;
-          slug: string;
-          isActive: boolean;
-        };
-        books: {
-          id: string;
-          title: string;
-          slug: string;
-          priceRange: { min: number; max: number; display: string } | null;
-          thumbnail: string | null;
-        }[];
-      }[];
-    }[] = [];
 
-    for (const pub of publications) {
-      // Get all active subjects for this publication
-      const subjects = await this.prisma.subject.findMany({
-        where: {
-          deletedAt: null,
-          isActive: true,
-          OR: [{ publicationId: pub.id }, { publicationId: null }],
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      // When filtering by a specific category, only nest the book under that
+      // category rather than every category it belongs to.
+      const categoryAssignments = categoryId
+        ? book.categories.filter((c) => c.categoryId === categoryId)
+        : book.categories;
 
-      const subjectsWithBooks: {
-        subject: {
-          id: string;
-          name: string;
-          slug: string;
-          isActive: boolean;
-        };
-        books: {
-          id: string;
-          title: string;
-          slug: string;
-          priceRange: { min: number; max: number; display: string } | null;
-          thumbnail: string | null;
-        }[];
-      }[] = [];
+      for (const assignment of categoryAssignments) {
+        const cat = assignment.category;
+        if (!cat) continue;
 
-      for (const subject of subjects) {
-        // Get all published books for this subject and publication
-        const books = await this.prisma.book.findMany({
-          where: {
-            deletedAt: null,
-            status: BookStatus.PUBLISHED,
-            publicationId: pub.id,
-            subjectId: subject.id,
-            ...(categoryId ? { categories: { some: { categoryId } } } : {}),
-          },
-          include: {
-            papers: {
-              where: { deletedAt: null },
+        let catNode = categoryMap.get(cat.id);
+        if (!catNode) {
+          catNode = {
+            category: {
+              id: cat.id,
+              name: cat.name,
+              slug: cat.slug,
+              isHidden: cat.isHidden,
+              displayOrder: cat.displayOrder,
+              icon: cat.icon,
+              route: cat.route,
             },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
+            publications: new Map(),
+          };
+          categoryMap.set(cat.id, catNode);
+        }
 
-        if (books.length > 0) {
-          const mappedBooks = books.map((book) => ({
-            id: book.id,
-            title: book.title,
-            slug: book.slug,
-            priceRange: this.calculatePriceRange(book.papers),
-            thumbnail: book.thumbnail,
-          }));
-          subjectsWithBooks.push({
+        const publication = book.publication;
+        const subject = book.subject;
+        if (!publication || !subject) continue;
+
+        let pubNode = catNode.publications.get(publication.id);
+        if (!pubNode) {
+          pubNode = {
+            publication: {
+              id: publication.id,
+              name: publication.name,
+              slug: publication.slug,
+              isActive: publication.isActive,
+            },
+            subjects: new Map(),
+          };
+          catNode.publications.set(publication.id, pubNode);
+        }
+
+        let subjNode = pubNode.subjects.get(subject.id);
+        if (!subjNode) {
+          subjNode = {
             subject: {
               id: subject.id,
               name: subject.name,
               slug: subject.slug,
               isActive: subject.isActive,
             },
-            books: mappedBooks,
-          });
+            books: [],
+          };
+          pubNode.subjects.set(subject.id, subjNode);
         }
-      }
 
-      if (subjectsWithBooks.length > 0) {
-        result.push({
-          publication: {
-            id: pub.id,
-            name: pub.name,
-            slug: pub.slug,
-            isActive: pub.isActive,
-          },
-          subjects: subjectsWithBooks,
-        });
+        subjNode.books.push(bookEntry);
       }
     }
 
-    return result;
+    // Serialize the maps into the nested array structure.
+    const result: {
+      category: {
+        id: string;
+        name: string;
+        slug: string;
+        isHidden: boolean;
+        displayOrder: number;
+        icon: string | null;
+        route: string | null;
+      };
+      publications: {
+        publication: {
+          id: string;
+          name: string;
+          slug: string;
+          isActive: boolean;
+        };
+        subjects: {
+          subject: {
+            id: string;
+            name: string;
+            slug: string;
+            isActive: boolean;
+          };
+          books: {
+            id: string;
+            title: string;
+            slug: string;
+            priceRange: {
+              min: number;
+              max: number;
+              display: string;
+            } | null;
+            thumbnail: string | null;
+          }[];
+        }[];
+      }[];
+    }[] = [];
+
+    const sortedCategories = Array.from(categoryMap.values()).sort(
+      (a, b) =>
+        (a.category.displayOrder ?? 0) - (b.category.displayOrder ?? 0) ||
+        a.category.name.localeCompare(b.category.name),
+    );
+
+    for (const catNode of sortedCategories) {
+      const sortedPubs = Array.from(catNode.publications.values()).sort(
+        (a, b) => a.publication.name.localeCompare(b.publication.name),
+      );
+
+      const publications = sortedPubs.map((pubNode) => {
+        const sortedSubjects = Array.from(pubNode.subjects.values()).sort(
+          (a, b) => a.subject.name.localeCompare(b.subject.name),
+        );
+
+        return {
+          publication: pubNode.publication,
+          subjects: sortedSubjects.map((subjNode) => ({
+            subject: subjNode.subject,
+            books: subjNode.books,
+          })),
+        };
+      });
+
+      result.push({
+        category: catNode.category,
+        publications,
+      });
+    }
+
+    return {
+      message:
+        result.length > 0
+          ? 'Books tree retrieved successfully'
+          : 'No books found',
+      status: 'success',
+      data: result,
+    };
   }
 
   private calculatePriceRange(papers: any[]): {

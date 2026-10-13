@@ -193,6 +193,12 @@ export class OrderService {
     });
 
     // Generate receipt asynchronously (don't block the response)
+    console.log('[RECEIPT] background receipt generation TRIGGERED', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      shipping: order.shipping,
+      total: order.total,
+    });
     this.receiptService.generate(order.id).catch((error) => {
       console.error('Failed to generate receipt:', error);
     });
@@ -431,6 +437,15 @@ export class OrderService {
     });
 
     // Generate receipt asynchronously
+    console.log(
+      '[RECEIPT] background receipt generation TRIGGERED (test order)',
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        shipping: order.shipping,
+        total: order.total,
+      },
+    );
     this.receiptService.generate(order.id).catch((error) => {
       console.error('Failed to generate receipt:', error);
     });
@@ -610,6 +625,13 @@ export class OrderService {
     const discount = Number(order.discount) || 0;
     const shipping = dto.shipping;
     const total = subtotal - discount + shipping;
+
+    console.log('[RECEIPT] updateShipping called', {
+      orderId: id,
+      oldShipping: order.shipping,
+      newShipping: shipping,
+      total,
+    });
 
     const updatedOrder = await this.prisma.order.update({
       where: { id },

@@ -28,6 +28,15 @@ export class ReceiptBuilder {
     const tax = 0;
     const grandTotal = subtotal - discount + shipping + tax;
 
+    console.log('[RECEIPT_BUILDER] values read from order', {
+      orderNumber: order.orderNumber,
+      rawShipping: order.shipping,
+      shipping,
+      discount,
+      subtotal,
+      grandTotal,
+    });
+
     const address = order.address
       ? {
           name: order.address.name,

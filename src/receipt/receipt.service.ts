@@ -31,10 +31,16 @@ export class ReceiptService {
 
   /**
    * Auto-confirm order when receipt is generated
+   *
+   * Uses updateMany with a status filter so an already-confirmed order is
+   * left untouched. This matters because generate() treats a receipt as
+   * stale when the order's `updatedAt` is newer than the receipt's
+   * `generatedAt` — an unconditional update here would bump `updatedAt` on
+   * every generate call and force a needless regeneration loop.
    */
   async confirmOrder(orderId: string): Promise<void> {
-    await this.prisma.order.update({
-      where: { id: orderId },
+    await this.prisma.order.updateMany({
+      where: { id: orderId, status: { not: OrderStatus.CONFIRMED } },
       data: { status: OrderStatus.CONFIRMED },
     });
   }
@@ -44,6 +50,7 @@ export class ReceiptService {
    */
   async generate(
     orderId: string,
+    retryCount = 0,
   ): Promise<{ pdfUrl: string; receiptNumber: string }> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -62,16 +69,68 @@ export class ReceiptService {
       throw new NotFoundException('Order not found');
     }
 
-    // Check if receipt already exists
+    console.log('[RECEIPT] generate() called', {
+      orderId,
+      orderNumber: order.orderNumber,
+      shipping: order.shipping,
+      discount: order.discount,
+      subtotal: order.subtotal,
+      total: order.total,
+      orderUpdatedAt: order.updatedAt,
+      retryCount,
+    });
+
+    // Check if a receipt already exists
     const existingReceipt = await this.prisma.receipt.findUnique({
       where: { orderId },
     });
 
     if (existingReceipt) {
-      return {
+      // The receipt PDF is a snapshot of the order at generation time. If
+      // the order was modified afterwards — e.g. the admin set the delivery
+      // charge after checkout — the stored PDF is stale and would still
+      // show the old values (shipping 0). Rebuild it so the receipt always
+      // reflects the current order.
+      const isStale =
+        order.updatedAt.getTime() > existingReceipt.generatedAt.getTime();
+
+      console.log('[RECEIPT] existing receipt found', {
+        receiptId: existingReceipt.id,
+        receiptGeneratedAt: existingReceipt.generatedAt,
         pdfUrl: existingReceipt.pdfUrl,
-        receiptNumber: existingReceipt.receiptNumber,
-      };
+        orderUpdatedAt: order.updatedAt,
+        isStale,
+      });
+
+      if (!isStale) {
+        console.log('[RECEIPT] returning CACHED receipt (order not modified)');
+        return {
+          pdfUrl: existingReceipt.pdfUrl,
+          receiptNumber: existingReceipt.receiptNumber,
+        };
+      }
+
+      console.log('[RECEIPT] receipt is STALE — rebuilding from current order');
+
+      // Delete the stale PDF from Cloudinary and drop the receipt record,
+      // then fall through to generate a fresh one below.
+      if (existingReceipt.publicId) {
+        try {
+          await this.cloudinaryService.deleteFile(
+            existingReceipt.publicId,
+            'raw',
+          );
+        } catch (error) {
+          console.error(
+            'Failed to delete stale receipt from Cloudinary:',
+            error,
+          );
+        }
+      }
+
+      await this.prisma.receipt.delete({
+        where: { id: existingReceipt.id },
+      });
     }
 
     // Generate QR code
@@ -90,6 +149,13 @@ export class ReceiptService {
       order as OrderWithRelations,
       qrCodeDataUrl,
     );
+
+    console.log('[RECEIPT] receipt data built from order snapshot', {
+      shipping: receiptData.shipping,
+      discount: receiptData.discount,
+      subtotal: receiptData.subtotal,
+      grandTotal: receiptData.grandTotal,
+    });
 
     // Generate PDF
     const templatePath = getTemplatePath('receipt.hbs');
@@ -127,6 +193,44 @@ export class ReceiptService {
       );
     }
 
+    // The order may have changed while the PDF was being generated and
+    // uploaded (e.g. the admin set the delivery charge mid-upload). The
+    // receipt's generatedAt is set at INSERT time — after the upload — so
+    // without this check a PDF built from stale order data would look
+    // "fresh" to the staleness check above and never be rebuilt.
+    const currentOrder = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: { updatedAt: true, shipping: true },
+    });
+
+    if (
+      currentOrder &&
+      currentOrder.updatedAt.getTime() > order.updatedAt.getTime()
+    ) {
+      console.warn('[RECEIPT] order changed DURING PDF generation', {
+        snapshotUpdatedAt: order.updatedAt,
+        currentUpdatedAt: currentOrder.updatedAt,
+        snapshotShipping: order.shipping,
+        currentShipping: currentOrder.shipping,
+        retryCount,
+      });
+
+      if (retryCount < 2) {
+        // Clean up the PDF we just uploaded — it was built from stale data
+        try {
+          await this.cloudinaryService.deleteFile(uploadResult.publicId, 'raw');
+        } catch (error) {
+          console.error('Failed to delete orphaned receipt PDF:', error);
+        }
+        console.log('[RECEIPT] retrying with fresh order data');
+        return this.generate(orderId, retryCount + 1);
+      }
+
+      console.error(
+        '[RECEIPT] retry limit reached — saving possibly stale PDF',
+      );
+    }
+
     // Generate receipt number
     const receiptNumber = `RC-${dayjs().format('YYYYMMDD')}-${String(order.id).slice(-6).toUpperCase()}`;
 
@@ -139,6 +243,12 @@ export class ReceiptService {
         publicId: uploadResult.publicId,
         qrCodeUrl: qrCodeDataUrl,
       },
+    });
+
+    console.log('[RECEIPT] new receipt saved', {
+      receiptId: receipt.id,
+      receiptNumber: receipt.receiptNumber,
+      pdfUrl: receipt.pdfUrl,
     });
 
     return {
@@ -240,7 +350,10 @@ export class ReceiptService {
       // Delete old PDF from Cloudinary
       if (existingReceipt.publicId) {
         try {
-          await this.cloudinaryService.deleteFile(existingReceipt.publicId);
+          await this.cloudinaryService.deleteFile(
+            existingReceipt.publicId,
+            'raw',
+          );
         } catch (error) {
           console.error('Failed to delete old receipt from Cloudinary:', error);
         }

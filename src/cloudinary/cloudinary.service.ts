@@ -54,8 +54,16 @@ export class CloudinaryService {
 
   /**
    * Delete a file from Cloudinary by public_id
+   * @param resourceType Must match the type used at upload time — PDFs are
+   *   uploaded as 'raw', images as 'image'. Using the wrong type makes
+   *   Cloudinary return "not found" without deleting anything.
    */
-  async deleteFile(publicId: string): Promise<{ result: string }> {
-    return cloudinary.uploader.destroy(publicId) as Promise<{ result: string }>;
+  async deleteFile(
+    publicId: string,
+    resourceType: 'image' | 'raw' | 'video' = 'image',
+  ): Promise<{ result: string }> {
+    return cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType,
+    }) as Promise<{ result: string }>;
   }
 }

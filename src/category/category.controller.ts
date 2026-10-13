@@ -70,6 +70,21 @@ export class CategoryController {
   }
 
   /**
+   * Get the full navigation menu tree: Category -> Publication -> Subject -> Book
+   * Access: Public (non-hidden categories) / Admin (all categories)
+   *
+   * NOTE: This MUST be declared before @Get(':id'). NestJS matches routes in
+   * declaration order, so a static segment declared after a parametrized one
+   * would be shadowed (GET /categories/menu/tree would hit findOne with
+   * id="menu").
+   */
+  @Get('menu/tree')
+  @UseGuards(OptionalJwtAuthGuard)
+  findMenuTree(@Request() req: RequestWithUser) {
+    return this.categoryService.findMenuTree(req?.user?.role);
+  }
+
+  /**
    * Get a single category by ID
    * Access: Public
    */

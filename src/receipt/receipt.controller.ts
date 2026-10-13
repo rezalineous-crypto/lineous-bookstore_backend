@@ -40,6 +40,9 @@ export class ReceiptController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   async generateReceipt(@Param('id') id: string) {
+    console.log('[RECEIPT] POST /orders/:id/receipt (generate) called', {
+      orderId: id,
+    });
     const result = await this.receiptService.generate(id);
 
     // Auto-confirm order when receipt is generated
@@ -60,6 +63,9 @@ export class ReceiptController {
   @UseGuards(RolesGuard)
   @Roles(Role.ADMIN)
   async regenerateReceipt(@Param('id') id: string) {
+    console.log('[RECEIPT] POST /orders/:id/receipt/regenerate called', {
+      orderId: id,
+    });
     const result = await this.receiptService.regenerate(id);
 
     // Auto-confirm order when receipt is regenerated
@@ -88,6 +94,13 @@ export class ReceiptController {
       req.user.id,
       req.user.role,
     );
+
+    console.log('[RECEIPT] GET /orders/:id/receipt (download) called', {
+      orderId: id,
+      receiptId: receipt.id,
+      receiptGeneratedAt: receipt.generatedAt,
+      pdfUrl: receipt.pdfUrl,
+    });
 
     // Set filename for download
     const filename = `CLC-ORD-${receipt.order.orderNumber}.pdf`;
