@@ -1,28 +1,18 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Controller,
   Get,
-  Post,
   Patch,
-  Delete,
-  Param,
   Body,
   UseGuards,
   Request,
 } from '@nestjs/common';
 import { UserService } from './user.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
-import { RolesGuard } from 'src/auth/roles.guard';
-import { Roles } from 'src/auth/roles.decorator';
 import { Role } from '@prisma/client';
 
-/**
- * Request interface with user from JWT
- */
 interface RequestWithUser extends Request {
   user: {
     id: string;
@@ -37,57 +27,20 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   /**
-   * Create a new user
-   * Access: Admins only
+   * Get the authenticated user's own profile
+   * Access: Authenticated users
    */
-  @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  create(@Body() dto: CreateUserDto, @Request() req: RequestWithUser) {
-    return this.userService.create(dto, req.user.id, req.user.role);
+  @Get('me')
+  getMe(@Request() req: RequestWithUser) {
+    return this.userService.getMe(req.user.id);
   }
 
   /**
-   * Get all users
-   * Access: Admins only
+   * Update the authenticated user's own profile
+   * Access: Authenticated users
    */
-  @Get()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  findAll(@Request() req: RequestWithUser) {
-    return this.userService.findAll(req.user.id, req.user.role);
-  }
-
-  /**
-   * Get a single user by ID
-   * Access: Users can view their own profile, admins can view any
-   */
-  @Get(':id')
-  findOne(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.userService.findOne(id, req.user.id, req.user.role);
-  }
-
-  /**
-   * Update a user
-   * Access: Users can update their own profile, admins can update any
-   */
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() dto: UpdateUserDto,
-    @Request() req: RequestWithUser,
-  ) {
-    return this.userService.update(id, dto, req.user.id, req.user.role);
-  }
-
-  /**
-   * Delete a user
-   * Access: Admins only
-   */
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
-  remove(@Param('id') id: string, @Request() req: RequestWithUser) {
-    return this.userService.remove(id, req.user.id, req.user.role);
+  @Patch('me')
+  updateMe(@Body() dto: UpdateProfileDto, @Request() req: RequestWithUser) {
+    return this.userService.updateMe(req.user.id, dto);
   }
 }

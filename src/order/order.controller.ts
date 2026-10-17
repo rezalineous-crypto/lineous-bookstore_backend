@@ -62,8 +62,16 @@ export class OrderController {
   findAll(
     @Request() req: RequestWithUser,
     @Query('categoryId') categoryId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
-    return this.orderService.findAll(req.user.id, req.user.role, categoryId);
+    return this.orderService.findAll(
+      req.user.id,
+      req.user.role,
+      categoryId,
+      page,
+      limit,
+    );
   }
 
   /**
@@ -99,5 +107,23 @@ export class OrderController {
   @Roles(Role.ADMIN)
   updateShipping(@Param('id') id: string, @Body() dto: UpdateShippingDto) {
     return this.orderService.updateShipping(id, dto);
+  }
+
+  /**
+   * Cancel an order
+   * Access: Authenticated users (own order) or Admins
+   */
+  @Post(':id/cancel')
+  cancelOrder(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.orderService.cancelOrder(id, req.user.id, req.user.role);
+  }
+
+  /**
+   * Request a return for an order
+   * Access: Authenticated users (own order) or Admins
+   */
+  @Post(':id/return')
+  returnOrder(@Param('id') id: string, @Request() req: RequestWithUser) {
+    return this.orderService.returnOrder(id, req.user.id, req.user.role);
   }
 }

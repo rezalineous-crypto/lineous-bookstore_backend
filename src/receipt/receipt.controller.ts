@@ -15,6 +15,7 @@ import {
 import { Response } from 'express';
 import { ReceiptService } from './receipt.service';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from 'src/auth/optional-auth.guard';
 import { RolesGuard } from 'src/auth/roles.guard';
 import { Roles } from 'src/auth/roles.decorator';
 import { Role } from '@prisma/client';
@@ -149,20 +150,33 @@ export class ReceiptController {
 }
 
 /**
- * Public controller for receipt verification (no auth required)
+ * Public controller for receipt verification.
+ *
+ * The endpoint is intentionally left unauthenticated so customers can
+ * verify a receipt without logging in, but when a caller IS authenticated
+ * their identity is used to enforce ownership (and surface full PII).
  */
 @Controller('receipts')
+@UseGuards(OptionalJwtAuthGuard)
 export class PublicReceiptController {
   constructor(private readonly receiptService: ReceiptService) {}
 
   /**
-   * Verify receipt by receipt number (public)
+   * Verify receipt by receipt number.
+   * Unauthenticated callers receive a PII-stripped receipt. Authenticated
+   * callers only see receipts that belong to them (admins see all).
    */
   @Get('verify/:receiptNumber')
   @HttpCode(HttpStatus.OK)
-  async verifyReceipt(@Param('receiptNumber') receiptNumber: string) {
-    const receipt =
-      await this.receiptService.findByReceiptNumber(receiptNumber);
+  async verifyReceipt(
+    @Param('receiptNumber') receiptNumber: string,
+    @Request() req: RequestWithUser,
+  ) {
+    const receipt = await this.receiptService.findByReceiptNumber(
+      receiptNumber,
+      req.user?.id ?? null,
+      req.user?.role ?? null,
+    );
 
     return {
       message: 'Receipt verified successfully',

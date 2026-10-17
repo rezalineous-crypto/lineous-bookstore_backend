@@ -88,8 +88,18 @@ export class BookController {
     @Request() req: RequestWithUser,
     @Query('subjectId') subjectId?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
   ) {
-    return this.bookService.findAll(req?.user?.role, subjectId, categoryId);
+    return this.bookService.findAll(
+      req?.user?.role,
+      subjectId,
+      categoryId,
+      q,
+      page,
+      limit,
+    );
   }
 
   /**

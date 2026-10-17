@@ -460,15 +460,25 @@ export class OrderService {
   /**
    * Get all orders for the authenticated user
    * Security: Authenticated users
+   *
+   * Supports optional pagination (page/limit) to avoid unbounded growth.
    */
   async findAll(
     userId: string,
     requestingUserRole: Role,
     categoryId?: string,
+    page: number = 1,
+    limit: number = 20,
   ): Promise<{
     message: string;
     status: string;
     data: Order[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
   }> {
     const where: any = requestingUserRole === Role.ADMIN ? {} : { userId };
 
@@ -476,20 +486,35 @@ export class OrderService {
       where.orderItems = { some: { categoryId } };
     }
 
-    const orders = await this.prisma.order.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        orderItems: true,
-        user: true,
-      },
-    });
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          orderItems: true,
+          user: true,
+        },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
 
     return {
       message:
         orders.length > 0 ? 'Orders retrieved successfully' : 'No orders found',
       status: 'success',
       data: orders,
+      meta: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        pages: Math.ceil(total / safeLimit) || 1,
+      },
     };
   }
 
@@ -640,6 +665,98 @@ export class OrderService {
 
     return {
       message: 'Order shipping updated successfully',
+      status: 'success',
+      data: updatedOrder,
+    };
+  }
+
+  /**
+   * Customer-facing order cancellation.
+   * Security: Authenticated users (own order only)
+   *
+   * Only orders in a state that allows cancellation may be cancelled.
+   */
+  async cancelOrder(
+    id: string,
+    userId: string,
+    requestingUserRole: Role,
+  ): Promise<{
+    message: string;
+    status: string;
+    data: Order;
+  }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (requestingUserRole !== Role.ADMIN && order.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const allowedTransitions = OrderService.VALID_TRANSITIONS[order.status];
+    if (!allowedTransitions.includes(OrderStatus.CANCELLED)) {
+      throw new BadRequestException(
+        `Order cannot be cancelled from status ${order.status}`,
+      );
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id },
+      data: { status: OrderStatus.CANCELLED },
+    });
+
+    return {
+      message: 'Order cancelled successfully',
+      status: 'success',
+      data: updatedOrder,
+    };
+  }
+
+  /**
+   * Customer-facing order return request.
+   * Security: Authenticated users (own order only)
+   *
+   * Only orders in a state that allows a return may be returned.
+   */
+  async returnOrder(
+    id: string,
+    userId: string,
+    requestingUserRole: Role,
+  ): Promise<{
+    message: string;
+    status: string;
+    data: Order;
+  }> {
+    const order = await this.prisma.order.findUnique({
+      where: { id },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (requestingUserRole !== Role.ADMIN && order.userId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const allowedTransitions = OrderService.VALID_TRANSITIONS[order.status];
+    if (!allowedTransitions.includes(OrderStatus.RETURNED)) {
+      throw new BadRequestException(
+        `Order cannot be returned from status ${order.status}`,
+      );
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id },
+      data: { status: OrderStatus.RETURNED },
+    });
+
+    return {
+      message: 'Order return requested successfully',
       status: 'success',
       data: updatedOrder,
     };

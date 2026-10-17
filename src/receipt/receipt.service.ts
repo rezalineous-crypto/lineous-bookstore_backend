@@ -309,9 +309,18 @@ export class ReceiptService {
   }
 
   /**
-   * Get receipt by receipt number (public verification)
+   * Get receipt by receipt number.
+   *
+   * @param receiptNumber - the public receipt number to look up
+   * @param requestingUserId - when provided, the receipt must belong to this
+   *   user (admin bypasses this check). Pass null/undefined for a fully
+   *   public lookup, in which case PII (user email/address) is stripped.
    */
-  async findByReceiptNumber(receiptNumber: string) {
+  async findByReceiptNumber(
+    receiptNumber: string,
+    requestingUserId?: string | null,
+    requestingUserRole?: string | null,
+  ) {
     const receipt = await this.prisma.receipt.findUnique({
       where: { receiptNumber },
       include: {
@@ -331,6 +340,28 @@ export class ReceiptService {
 
     if (!receipt) {
       throw new NotFoundException('Receipt not found');
+    }
+
+    const order = receipt.order as unknown as OrderWithRelations;
+    const isAdmin = requestingUserRole === 'ADMIN';
+
+    // Ownership enforcement: when a caller is identified, the receipt must
+    // belong to them unless they are an admin.
+    if (requestingUserId && !isAdmin && order.userId !== requestingUserId) {
+      throw new NotFoundException('Receipt not found');
+    }
+
+    // Strip PII for unauthenticated (public) callers only.
+    // Authenticated users (and admins) see the full receipt.
+    if (!requestingUserId) {
+      return {
+        ...receipt,
+        order: {
+          ...order,
+          user: undefined,
+          address: undefined,
+        },
+      };
     }
 
     return receipt;

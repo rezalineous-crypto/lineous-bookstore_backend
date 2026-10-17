@@ -155,15 +155,27 @@ export class BookService {
   /**
    * Get all books
    * Security: Public
+   *
+   * Supports optional pagination (page/limit) and a text search over the
+   * book title, short description and description fields.
    */
   async findAll(
     requestingUserRole?: Role,
     subjectId?: string,
     categoryId?: string,
+    q?: string,
+    page: number = 1,
+    limit: number = 20,
   ): Promise<{
     message: string;
     status: string;
     data: Book[];
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
   }> {
     // Soft-deleted books are never returned, for any role. Admins see all
     // non-deleted books (any status); everyone else sees published only.
@@ -180,19 +192,37 @@ export class BookService {
       where.categories = { some: { categoryId } };
     }
 
-    const books = await this.prisma.book.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        publication: true,
-        subject: true,
-        papers: {
-          where: { deletedAt: null },
+    if (q && q.trim().length > 0) {
+      const term = q.trim();
+      where.OR = [
+        { title: { contains: term, mode: 'insensitive' } },
+        { shortDescription: { contains: term, mode: 'insensitive' } },
+        { description: { contains: term, mode: 'insensitive' } },
+      ];
+    }
+
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+
+    const [books, total] = await Promise.all([
+      this.prisma.book.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          publication: true,
+          subject: true,
+          papers: {
+            where: { deletedAt: null },
+          },
+          attachments: true,
+          reviews: true,
         },
-        attachments: true,
-        reviews: true,
-      },
-    });
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.book.count({ where }),
+    ]);
 
     const booksWithPriceRange = books.map((book) => ({
       ...book,
@@ -206,6 +236,12 @@ export class BookService {
           : BookSuccessMessages.NOT_FOUND,
       status: 'success',
       data: booksWithPriceRange,
+      meta: {
+        page: safePage,
+        limit: safeLimit,
+        total,
+        pages: Math.ceil(total / safeLimit) || 1,
+      },
     };
   }
 

@@ -11,26 +11,31 @@ datasource db {
 }
 
 model User {
-  id            String     @id @default(uuid())
-  firstName     String?
-  lastName      String?
-  email         String     @unique
-  phone         String?
-  password      String?
-  provider      Provider   @default(EMAIL)
-  providerId    String?
-  avatar        String?
-  role          Role       @default(USER)
-  emailVerified Boolean    @default(false)
-  status        UserStatus @default(ACTIVE)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  deletedAt     DateTime?
-  addresses     Address[]
-  auditLogs     AuditLog[]
-  cart          Cart?
-  orders        Order[]
-  wishlists     Wishlist[]
+  id                     String     @id @default(uuid())
+  firstName              String?
+  lastName               String?
+  email                  String     @unique
+  phone                  String?
+  password               String?
+  provider               Provider   @default(EMAIL)
+  providerId             String?
+  avatar                 String?
+  role                   Role       @default(USER)
+  emailVerified          Boolean    @default(false)
+  status                 UserStatus @default(ACTIVE)
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  deletedAt              DateTime?
+  bio                    String?
+  refreshToken           String?
+  refreshTokenExpiresAt  DateTime?
+  passwordResetToken     String?
+  passwordResetExpiresAt DateTime?
+  addresses              Address[]
+  auditLogs              AuditLog[]
+  cart                   Cart?
+  orders                 Order[]
+  wishlists              Wishlist[]
 
   @@index([email])
   @@index([phone])
