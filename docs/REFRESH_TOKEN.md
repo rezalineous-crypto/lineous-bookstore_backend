@@ -1,37 +1,84 @@
-Yes — and here is exactly what the admin panel needs to know. All paths include the /api global prefix.
+# Refresh Token Contract
 
-Admin-facing changes
-1. Admin login response grew (both admin endpoints)
-POST /auth/admin/login (and POST /auth/login) now return a refreshToken alongside accessToken:
+All routes are under the global prefix `/api`.
 
+## Token lifetimes
+
+| Token       | Expiry            | Where stored      |
+|-------------|-------------------|-------------------|
+| accessToken | 15 minutes        | memory / localStorage |
+| refreshToken| 7 days            | httpOnly cookie / localStorage |
+
+`REFRESH_TOKEN_EXPIRES_MS` env var overrides the refresh lifetime (default `7 * 24 * 60 * 60 * 1000`).
+
+## POST /auth/refresh
+
+Public — **no `Authorization` header required**. The refresh token is the credential.
+
+### Request body
+
+```json
+{ "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+```
+
+### Success — 200
+
+```json
 {
-  "accessToken": "eyJ...",      // now 15 min (was 1 day)
-  "refreshToken": "eyJ...",     // NEW, 7 days
-  "user": { "id": "...", "email": "...", "role": "ADMIN" }
+  "accessToken": "eyJ...new 15-min JWT...",
+  "refreshToken": "eyJ...rotated 7-day JWT...",
+  "user": { "id": "clx...", "email": "user@example.com", "role": "USER" }
 }
-Admin action: store refreshToken, call POST /auth/refresh on 401, call POST /auth/logout to clear it.
+```
 
-2. Book list is now paginated
-GET /books (admin sees all books regardless of status) now takes page/limit (default 1/20, max 100) and returns a meta block:
+**The refresh token is rotated on every use.** Always replace the stored token with the one returned; the old one is dead immediately.
 
-{ "data": [ /* this page only */ ], "meta": { "page": 1, "limit": 20, "total": 143, "pages": 8 } }
-Also new: ?q=text searches title/description. Admin action: update the book-management table to paginate instead of loading everything.
+### Error — 401
 
-3. Order list is now paginated
-GET /orders (admin sees all orders) now takes page/limit and returns the same meta shape. Admin action: paginate the order-management list.
+```json
+{
+  "message": "Invalid or expired refresh token",
+  "error": "Unauthorized",
+  "statusCode": 401
+}
+```
 
-4. Admin can cancel / return orders directly
-POST /orders/:id/cancel and POST /orders/:id/return are not admin-only — the same endpoints accept an admin bearer token (ownership check is bypassed for ADMIN). No body needed. 400 if the current status doesn't allow the transition (uses the existing state machine). Response: { "message": ..., "status": "success", "data": { /* order, status updated */ } } Admin action: you can wire "Cancel" / "Request Return" buttons on the order detail page to these endpoints — no separate admin endpoint needed.
+Session is dead. Clear tokens and redirect to login.
 
-5. Receipt verify shows full PII for admins
-GET /receipts/verify/:receiptNumber strips user/address for anonymous callers, but admins who send a valid bearer token see the full receipt (no stripping, no ownership block). Admin action: pass the admin token when verifying receipts in the admin panel.
+## POST /auth/logout
 
-6. Admin's own profile
-GET /users/me and PATCH /users/me work for admins too (same as customers) — useful for the admin's own account settings.
+Requires `Authorization: Bearer <accessToken>`. No body.
 
-No admin changes needed
-PATCH /orders/:id/status and PATCH /orders/:id/shipping are untouched.
-POST /orders/:id/receipt (generate/regenerate) is untouched.
-No new admin-only routes were created — cancel/return reuse the customer endpoints.
-DB migration before deploy
-Run npx prisma migrate deploy then npx prisma generate — adds bio, refreshToken, refreshTokenExpiresAt, passwordResetToken, passwordResetExpiresAt to User.
+```json
+{ "message": "Logged out successfully", "status": "success" }
+```
+
+Clears the stored refresh token server-side. Also clear it locally.
+
+## Login responses now include refreshToken
+
+`POST /auth/login` and `POST /auth/admin/login` both return:
+
+```json
+{
+  "accessToken": "eyJ...",      // 15 min
+  "refreshToken": "eyJ...",     // 7 days, NEW
+  "user": { "id": "...", "email": "...", "role": "..." }
+}
+```
+
+## Recommended client flow
+
+1. On login: store `accessToken`, `refreshToken`, `user`.
+2. Every request: `Authorization: Bearer <accessToken>`.
+3. On `401` (except from `/auth/refresh` itself):
+   - call `POST /auth/refresh` with the stored refresh token
+   - on success: replace both tokens, retry the original request
+   - on failure: clear tokens, redirect to login
+4. Never retry `/auth/refresh` in a loop.
+
+## Related endpoints (separate concern)
+
+- `POST /auth/forgot-password` — body `{ "email" }`, always returns the same generic message
+- `POST /auth/reset-password` — body `{ "token", "newPassword" }`, 400 on invalid/expired token
+- `GET /users/me`, `PATCH /users/me` — profile persistence (own profile only)
