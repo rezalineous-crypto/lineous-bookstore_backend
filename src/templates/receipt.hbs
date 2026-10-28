@@ -410,6 +410,19 @@
           </div>
         </div>
 
+        <div class='customer-block'>
+          <h3>Customer Details</h3>
+          <p><strong>Name:</strong> {{customerName}}</p>
+          {{#if customerPhone}}<p><strong>Phone:</strong> {{customerPhone}}</p>{{/if}}
+          {{#if customerEmail}}<p><strong>Email:</strong> {{customerEmail}}</p>{{/if}}
+          {{#if address}}
+            <p><strong>Address:</strong> {{address.name}} {{address.phone}}</p>
+            <p>{{address.addressLine}}{{#if address.area}}, {{address.area}}{{/if}}</p>
+            <p>{{address.district}}{{#if address.division}}, {{address.division}}{{/if}}{{#if address.postalCode}} - {{address.postalCode}}{{/if}}</p>
+            {{#if address.country}}<p>{{address.country}}</p>{{/if}}
+          {{/if}}
+        </div>
+
         <table class='items-table'>
           <thead>
             <tr>
@@ -429,8 +442,8 @@
                   {{/if}}
                 </td>
                 <td>{{quantity}}</td>
-                <td>৳{{unitPrice}}</td>
-                <td>৳{{subtotal}}</td>
+                <td>TK{{unitPrice}}</td>
+                <td>TK{{subtotal}}</td>
               </tr>
             {{/each}}
           </tbody>
@@ -440,27 +453,27 @@
           <table class='totals-table'>
             <tr>
               <td>Subtotal</td>
-              <td>৳{{subtotal}}</td>
+              <td>TK{{subtotal}}</td>
             </tr>
             {{#if discount}}
               <tr class='discount-row'>
                 <td>Discount</td>
-                <td>-৳{{discount}}</td>
+                <td>-TK{{discount}}</td>
               </tr>
             {{/if}}
             <tr>
               <td>Shipping</td>
-              <td>৳{{shipping}}</td>
+              <td>TK{{shipping}}</td>
             </tr>
             {{#if tax}}
               <tr>
                 <td>Tax</td>
-                <td>৳{{tax}}</td>
+                <td>TK{{tax}}</td>
               </tr>
             {{/if}}
             <tr class='grand-total-row'>
               <td>Grand Total</td>
-              <td>৳{{grandTotal}}</td>
+              <td>TK{{grandTotal}}</td>
             </tr>
           </table>
         </div>

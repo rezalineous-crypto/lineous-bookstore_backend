@@ -192,16 +192,8 @@ export class OrderService {
       where: { cartId: cart.id },
     });
 
-    // Generate receipt asynchronously (don't block the response)
-    console.log('[RECEIPT] background receipt generation TRIGGERED', {
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      shipping: order.shipping,
-      total: order.total,
-    });
-    this.receiptService.generate(order.id).catch((error) => {
-      console.error('Failed to generate receipt:', error);
-    });
+    // Receipt is NOT generated at checkout. Admin generates it after setting
+    // the shipping charge via POST /orders/:id/receipt.
 
     return {
       message: 'Order created successfully',
@@ -497,6 +489,7 @@ export class OrderService {
         include: {
           orderItems: true,
           user: true,
+          address: true,
         },
         skip,
         take: safeLimit,
@@ -542,6 +535,8 @@ export class OrderService {
           },
         },
         payments: true,
+        user: true,
+        address: true,
       },
     });
 
