@@ -1,5 +1,6 @@
 import { ReceiptDTO, ReceiptItem } from '../dto/receipt.dto';
 import { Order, OrderItem, User, Address } from '@prisma/client';
+import dayjs from 'dayjs';
 
 type OrderWithRelations = Order & {
   orderItems: (OrderItem & { paper?: { name: string } })[];
@@ -8,7 +9,11 @@ type OrderWithRelations = Order & {
 };
 
 export class ReceiptBuilder {
-  static build(order: OrderWithRelations, qrCodeDataUrl?: string): ReceiptDTO {
+  static build(
+    order: OrderWithRelations,
+    qrCodeDataUrl?: string,
+    logoUrl?: string,
+  ): ReceiptDTO {
     const customerName = [order.user.firstName, order.user.lastName]
       .filter(Boolean)
       .join(' ');
@@ -61,7 +66,7 @@ export class ReceiptBuilder {
       customerName: fullName,
       customerEmail: order.user.email,
       customerPhone: order.user.phone || undefined,
-      date: order.createdAt.toISOString(),
+      date: dayjs(order.createdAt).format('DD/MM/YYYY'),
       paymentMethod: order.paymentMethod || 'N/A',
       paymentStatus: order.paymentStatus,
       subtotal,
@@ -72,6 +77,7 @@ export class ReceiptBuilder {
       items,
       address,
       qrCodeDataUrl,
+      logoUrl,
     };
   }
 }

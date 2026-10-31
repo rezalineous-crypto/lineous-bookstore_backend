@@ -32,4 +32,5 @@ export interface ReceiptDTO {
     postalCode?: string;
   };
   qrCodeDataUrl?: string;
+  logoUrl?: string;
 }

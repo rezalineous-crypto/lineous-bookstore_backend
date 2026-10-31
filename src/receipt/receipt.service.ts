@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   Injectable,
   NotFoundException,
@@ -15,6 +14,16 @@ import { Order, OrderItem, User, Address, OrderStatus } from '@prisma/client';
 import { generatePdfFromTemplate, getTemplatePath } from '../utils/pdf';
 import QRCode from 'qrcode';
 import dayjs from 'dayjs';
+
+const LOGO_PATH = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'public',
+  'logo',
+  'logo.png',
+);
+const LOGO_URL = `data:image/png;base64,${fs.readFileSync(LOGO_PATH, { encoding: 'base64' })}`;
 
 type OrderWithRelations = Order & {
   orderItems: (OrderItem & { paper?: { name: string } })[];
@@ -148,6 +157,7 @@ export class ReceiptService {
     const receiptData = ReceiptBuilder.build(
       order as OrderWithRelations,
       qrCodeDataUrl,
+      LOGO_URL,
     );
 
     console.log('[RECEIPT] receipt data built from order snapshot', {

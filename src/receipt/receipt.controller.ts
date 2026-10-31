@@ -44,10 +44,11 @@ export class ReceiptController {
     console.log('[RECEIPT] POST /orders/:id/receipt (generate) called', {
       orderId: id,
     });
-    const result = await this.receiptService.generate(id);
 
-    // Auto-confirm order when receipt is generated
+    // Auto-confirm order before generating receipt so the receipt reflects CONFIRMED status
     await this.receiptService.confirmOrder(id);
+
+    const result = await this.receiptService.generate(id);
 
     return {
       message: 'Receipt generated successfully',
@@ -67,10 +68,11 @@ export class ReceiptController {
     console.log('[RECEIPT] POST /orders/:id/receipt/regenerate called', {
       orderId: id,
     });
-    const result = await this.receiptService.regenerate(id);
 
-    // Auto-confirm order when receipt is regenerated
+    // Auto-confirm order before regenerating receipt so the receipt reflects CONFIRMED status
     await this.receiptService.confirmOrder(id);
+
+    const result = await this.receiptService.regenerate(id);
 
     return {
       message: 'Receipt regenerated successfully',
